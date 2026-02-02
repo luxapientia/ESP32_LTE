@@ -10,17 +10,22 @@
  * Requires: ArduinoHttpClient
  *   https://github.com/arduino-libraries/ArduinoHttpClient
  *
- * Wiring (mikroBUS / UART): modem RX <- ESP32 TX, modem TX -> ESP32 RX
- * Default pins: MODEM_RX=16, MODEM_TX=17 (change below if needed)
+ * Wiring (MIKROE-6287):
+ *   ESP32 GPIO 17 (TX) -> LTE RX
+ *   ESP32 GPIO 16 (RX) <- LTE TX
+ *   ESP32 GPIO 18      -> PWRKEY (must pulse to power on modem)
+ *   ESP32 GPIO 23       -> RESET (optional)
  **************************************************************/
 
 #define TINY_GSM_MODEM_SIM7070
 
 #define SerialMon Serial
 
-// ESP32: use second hardware UART for modem (RX, TX)
-#define MODEM_RX 16
-#define MODEM_TX 17
+// MIKROE-6287: UART and power pins
+#define MODEM_RX   16   // ESP32 RX  <- LTE TX
+#define MODEM_TX   17   // ESP32 TX  -> LTE RX
+#define MODEM_PWRKEY 18 // PWRKEY: pulse high ~1.5s to power on
+#define MODEM_RESET  23 // RESET (optional): low = reset
 #define SerialAT Serial2
 
 #if !defined(TINY_GSM_RX_BUFFER)
@@ -68,6 +73,20 @@ TinyGsm        modem(SerialAT);
 TinyGsmClientSecure client(modem);
 HttpClient          http(client, API_BASE_HOST, apiPort);
 
+// Power on modem via PWRKEY (SIM7070: hold high ~1.5s, then release).
+// If modem never responds, try inverting: HIGH<->LOW in this function.
+void modemPowerOn() {
+  pinMode(MODEM_PWRKEY, OUTPUT);
+  digitalWrite(MODEM_PWRKEY, LOW);
+  delay(100);
+  SerialMon.println(F("PWRKEY on..."));
+  digitalWrite(MODEM_PWRKEY, HIGH);
+  delay(1500);
+  digitalWrite(MODEM_PWRKEY, LOW);
+  SerialMon.println(F("Waiting for modem boot (8s)..."));
+  delay(8000);
+}
+
 void setup() {
   SerialMon.begin(115200);
   delay(1000);
@@ -75,13 +94,16 @@ void setup() {
   SerialMon.println(F("Voice API test – ESP32 + SIM7070E"));
   SerialMon.println(F("================================"));
 
+  // Power on modem before UART (required for MIKROE-6287)
+  modemPowerOn();
+
   // ESP32: Serial2 with explicit RX/TX pins for modem
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
-  delay(2000);
+  delay(500);
 
   SerialMon.println(F("Trying modem (autobaud)..."));
   TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
-  delay(2000);
+  delay(1000);
 
   SerialMon.println(F("Initializing modem..."));
   if (!modem.restart()) {
