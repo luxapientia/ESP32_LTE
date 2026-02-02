@@ -10,22 +10,25 @@
  * Requires: ArduinoHttpClient
  *   https://github.com/arduino-libraries/ArduinoHttpClient
  *
- * Wiring (MIKROE-6287):
- *   ESP32 GPIO 17 (TX) -> LTE RX
- *   ESP32 GPIO 16 (RX) <- LTE TX
- *   ESP32 GPIO 18      -> PWRKEY (must pulse to power on modem)
- *   ESP32 GPIO 23       -> RESET (optional)
+ * Wiring (LTE IoT 17 Click / MIKROE-6287, mikroBUS):
+ *   ESP32 GPIO 17 (TX) -> Click RX (mikroBUS TX)
+ *   ESP32 GPIO 16 (RX) <- Click TX (mikroBUS RX)
+ *   ESP32 GPIO 18      -> PWR (pin 1 AN): power on modem
+ *   ESP32 GPIO 4       -> CTS (pin 15 INT): drive LOW so modem can send (required)
+ *   ESP32 GPIO 23      -> RST (pin 2): optional reset
+ *   Datasheet: default UART 115200 bps, hardware flow control (CTS/RTS).
  **************************************************************/
 
 #define TINY_GSM_MODEM_SIM7070
 
 #define SerialMon Serial
 
-// MIKROE-6287: UART and power pins
-#define MODEM_RX   16   // ESP32 RX  <- LTE TX
-#define MODEM_TX   17   // ESP32 TX  -> LTE RX
-#define MODEM_PWRKEY 18 // PWRKEY: pulse to power on (see MODEM_PWRKEY_ACTIVE_LOW)
-#define MODEM_RESET  23 // RESET (optional): low = reset
+// LTE IoT 17 Click (MIKROE-6287): UART, power, flow control
+#define MODEM_RX     16   // ESP32 RX  <- Click TX (mikroBUS RX)
+#define MODEM_TX     17   // ESP32 TX  -> Click RX (mikroBUS TX)
+#define MODEM_PWRKEY 18   // PWR (pin 1): power on (see MODEM_PWRKEY_ACTIVE_LOW)
+#define MODEM_CTS    4    // CTS (pin 15 INT): drive LOW so modem can send (required!)
+#define MODEM_RESET  23   // RST (pin 2): optional
 #define SerialAT Serial2
 
 // SIM7070 on many boards: PWRKEY = active LOW (hold LOW ~1.5s to power on).
@@ -107,11 +110,15 @@ void setup() {
   SerialMon.println(F("Voice API test – ESP32 + SIM7070E"));
   SerialMon.println(F("================================"));
 
-  // Power on modem before UART (required for MIKROE-6287)
+  // Power on modem before UART (required for LTE IoT 17 Click)
   modemPowerOn();
 
-  // ESP32: Serial2 with explicit RX/TX pins for modem
-  SerialAT.begin(9600, SERIAL_8N1, MODEM_RX, MODEM_TX);
+  // Drive CTS LOW so modem can send (datasheet: hardware flow control)
+  pinMode(MODEM_CTS, OUTPUT);
+  digitalWrite(MODEM_CTS, LOW);
+
+  // ESP32: Serial2; datasheet says default 115200 bps
+  SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
   delay(500);
 
   // Optional: raw echo test – send AT and print any bytes from modem (3s).
