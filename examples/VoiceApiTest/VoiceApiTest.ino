@@ -1,7 +1,7 @@
 /**************************************************************
  * Voice API test – ESP32 + SIM7070E (MIKROE-6287)
  *
- * Hardware: ESP32-DevKitC-32E, MIKROE-6287 (SIM7070E)
+ * Hardware: ESP32 (e.g. DevKitC, WROOM-32D/32E), MIKROE-6287 LTE IoT 17 Click (SIM7070E)
  * SIM: Croatia local (APN internet.ht.ht, PIN 5576)
  *
  * Tests HTTPS workflow for Loop voice API (Supabase Edge Functions):
@@ -17,8 +17,8 @@
  *   ESP32 GPIO 4       -> CTS (pin 15 INT): drive LOW so modem can send (required)
  *   ESP32 GPIO 23      -> RST (pin 2): optional reset
  *   Datasheet: default UART 115200 bps, hardware flow control (CTS/RTS).
- *   If modem never responds: (1) Yellow STAT LED on Click must turn ON after PWR.
- *   (2) Wire CTS: GPIO4 -> Click INT. (3) Try toggling MODEM_PWRKEY_ACTIVE_LOW.
+ *   If raw test shows NO bytes: (1) Swap UART wires: swap GPIO 16 and 17.
+ *   (2) STAT LED ON? If not, comment out MODEM_PWRKEY_ACTIVE_LOW. (3) CTS: GPIO4->INT.
  **************************************************************/
 
 #define TINY_GSM_MODEM_SIM7070
@@ -156,14 +156,20 @@ void setup() {
 
   if (GSM_PIN[0] && modem.getSimStatus() != 3) {
     SerialMon.println(F("Unlocking SIM..."));
-    if (!modem.simUnlock(GSM_PIN)) {
-      SerialMon.println(F("SIM unlock failed"));
+    for (int i = 0; i < 3; i++) {
+      if (modem.simUnlock(GSM_PIN)) {
+        SerialMon.println(F("SIM unlocked"));
+        break;
+      }
+      SerialMon.println(F("SIM unlock failed, retry..."));
+      delay(2000);
     }
   }
 }
 
 void loop() {
   SerialMon.println();
+  // "Unhandled: 5)" etc. = modem URC (e.g. +CREG: 0,5 = registered); safe to ignore.
   SerialMon.println(F("Waiting for network..."));
   if (!modem.waitForNetwork(120000L)) {
     SerialMon.println(F("Network timeout"));
