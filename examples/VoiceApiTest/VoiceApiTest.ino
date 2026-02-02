@@ -17,6 +17,8 @@
  *   ESP32 GPIO 4       -> CTS (pin 15 INT): drive LOW so modem can send (required)
  *   ESP32 GPIO 23      -> RST (pin 2): optional reset
  *   Datasheet: default UART 115200 bps, hardware flow control (CTS/RTS).
+ *   If modem never responds: (1) Yellow STAT LED on Click must turn ON after PWR.
+ *   (2) Wire CTS: GPIO4 -> Click INT. (3) Try toggling MODEM_PWRKEY_ACTIVE_LOW.
  **************************************************************/
 
 #define TINY_GSM_MODEM_SIM7070
@@ -121,17 +123,20 @@ void setup() {
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
   delay(500);
 
-  // Optional: raw echo test – send AT and print any bytes from modem (3s).
-  // Uncomment to debug: if you see nothing = no link; garbage = wrong baud/pins.
-  // #define VOICE_API_RAW_ECHO_TEST
+  // Raw UART echo test: send AT every 500ms for 8s, print any bytes from modem.
+  // Nothing = no link (check STAT LED, CTS wire, PWRKEY polarity). Garbage = wrong baud/pins.
+  #define VOICE_API_RAW_ECHO_TEST
 #ifdef VOICE_API_RAW_ECHO_TEST
-  SerialMon.println(F("Raw UART test @ 9600 (3s)..."));
-  SerialAT.print(F("AT\r\n"));
-  for (unsigned long t = millis(); millis() - t < 3000;) {
-    while (SerialAT.available()) { SerialMon.write(SerialAT.read()); }
-    delay(10);
+  SerialMon.println(F("Raw UART @ 115200 (8s, AT every 500ms). Check: STAT LED ON? CTS=GPIO4->INT?"));
+  for (unsigned long t = millis(); millis() - t < 8000;) {
+    SerialAT.print(F("AT\r\n"));
+    for (int k = 0; k < 50; k++) {
+      while (SerialAT.available()) { SerialMon.write(SerialAT.read()); }
+      delay(10);
+    }
+    delay(450);
   }
-  SerialMon.println();
+  SerialMon.println(F("\n--- end raw test ---"));
 #endif
 
   SerialMon.println(F("Trying modem (autobaud)..."));
