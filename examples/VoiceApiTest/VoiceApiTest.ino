@@ -24,9 +24,13 @@
 // MIKROE-6287: UART and power pins
 #define MODEM_RX   16   // ESP32 RX  <- LTE TX
 #define MODEM_TX   17   // ESP32 TX  -> LTE RX
-#define MODEM_PWRKEY 18 // PWRKEY: pulse high ~1.5s to power on
+#define MODEM_PWRKEY 18 // PWRKEY: pulse to power on (see MODEM_PWRKEY_ACTIVE_LOW)
 #define MODEM_RESET  23 // RESET (optional): low = reset
 #define SerialAT Serial2
+
+// SIM7070 on many boards: PWRKEY = active LOW (hold LOW ~1.5s to power on).
+// If modem never responds, try toggling this (comment ↔ uncomment).
+#define MODEM_PWRKEY_ACTIVE_LOW
 
 #if !defined(TINY_GSM_RX_BUFFER)
 #define TINY_GSM_RX_BUFFER 1024
@@ -34,7 +38,7 @@
 
 #define TINY_GSM_DEBUG SerialMon
 #define GSM_AUTOBAUD_MIN 9600
-#define GSM_AUTOBAUD_MAX 115200
+#define GSM_AUTOBAUD_MAX 460800  // SIM7070 may default to 115200 or higher
 
 #define TINY_GSM_USE_GPRS true
 #define TINY_GSM_USE_WIFI false
@@ -73,18 +77,27 @@ TinyGsm        modem(SerialAT);
 TinyGsmClientSecure client(modem);
 HttpClient          http(client, API_BASE_HOST, apiPort);
 
-// Power on modem via PWRKEY (SIM7070: hold high ~1.5s, then release).
-// If modem never responds, try inverting: HIGH<->LOW in this function.
+// Power on modem via PWRKEY. SIM7070 often uses active-LOW (hold LOW ~1.5s).
+// Toggle MODEM_PWRKEY_ACTIVE_LOW above if modem still never responds.
 void modemPowerOn() {
   pinMode(MODEM_PWRKEY, OUTPUT);
+#ifdef MODEM_PWRKEY_ACTIVE_LOW
+  digitalWrite(MODEM_PWRKEY, HIGH);  // idle
+  delay(100);
+  SerialMon.println(F("PWRKEY on (active LOW)..."));
+  digitalWrite(MODEM_PWRKEY, LOW);
+  delay(1500);
+  digitalWrite(MODEM_PWRKEY, HIGH);
+#else
   digitalWrite(MODEM_PWRKEY, LOW);
   delay(100);
-  SerialMon.println(F("PWRKEY on..."));
+  SerialMon.println(F("PWRKEY on (active HIGH)..."));
   digitalWrite(MODEM_PWRKEY, HIGH);
   delay(1500);
   digitalWrite(MODEM_PWRKEY, LOW);
-  SerialMon.println(F("Waiting for modem boot (8s)..."));
-  delay(8000);
+#endif
+  SerialMon.println(F("Waiting for modem boot (15s)..."));
+  delay(15000);
 }
 
 void setup() {
@@ -98,8 +111,21 @@ void setup() {
   modemPowerOn();
 
   // ESP32: Serial2 with explicit RX/TX pins for modem
-  SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
+  SerialAT.begin(9600, SERIAL_8N1, MODEM_RX, MODEM_TX);
   delay(500);
+
+  // Optional: raw echo test – send AT and print any bytes from modem (3s).
+  // Uncomment to debug: if you see nothing = no link; garbage = wrong baud/pins.
+  // #define VOICE_API_RAW_ECHO_TEST
+#ifdef VOICE_API_RAW_ECHO_TEST
+  SerialMon.println(F("Raw UART test @ 9600 (3s)..."));
+  SerialAT.print(F("AT\r\n"));
+  for (unsigned long t = millis(); millis() - t < 3000;) {
+    while (SerialAT.available()) { SerialMon.write(SerialAT.read()); }
+    delay(10);
+  }
+  SerialMon.println();
+#endif
 
   SerialMon.println(F("Trying modem (autobaud)..."));
   TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
