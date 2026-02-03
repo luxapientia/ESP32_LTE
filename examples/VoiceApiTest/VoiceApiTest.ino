@@ -48,7 +48,8 @@
 #define TINY_GSM_USE_WIFI false
 
 // Croatia SIM (Hrvatski Telekom). If unlock still fails, disable PIN on SIM (phone) and use ""
-#define GSM_PIN "5576"
+// TRY THIS FIRST: Set to "" (empty) if SIM has no PIN
+#define GSM_PIN ""  // Changed from "5576" - try empty first
 const char apn[]      = "internet.ht.ht";
 const char gprsUser[] = "";
 const char gprsPass[] = "";
