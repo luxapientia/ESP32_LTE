@@ -42,13 +42,12 @@
 #endif
 
 #define TINY_GSM_DEBUG SerialMon
-#define GSM_AUTOBAUD_MIN 9600
-#define GSM_AUTOBAUD_MAX 460800  // SIM7070 may default to 115200 or higher
+#define MODEM_BAUD 115200  // LTE IoT 17 Click default (no autobaud)
 
 #define TINY_GSM_USE_GPRS true
 #define TINY_GSM_USE_WIFI false
 
-// Croatia SIM (Hrvatski Telekom)
+// Croatia SIM (Hrvatski Telekom). If unlock still fails, disable PIN on SIM (phone) and use ""
 #define GSM_PIN "5576"
 const char apn[]      = "internet.ht.ht";
 const char gprsUser[] = "";
@@ -119,42 +118,23 @@ void setup() {
   pinMode(MODEM_CTS, OUTPUT);
   digitalWrite(MODEM_CTS, LOW);
 
-  // ESP32: Serial2; datasheet says default 115200 bps
-  SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
+  // ESP32: Serial2 @ 115200 (LTE IoT 17 Click default)
+  SerialAT.begin(MODEM_BAUD, SERIAL_8N1, MODEM_RX, MODEM_TX);
   delay(500);
-
-  // Raw UART echo test: send AT every 500ms for 8s, print any bytes from modem.
-  // Nothing = no link (check STAT LED, CTS wire, PWRKEY polarity). Garbage = wrong baud/pins.
-  #define VOICE_API_RAW_ECHO_TEST
-#ifdef VOICE_API_RAW_ECHO_TEST
-  SerialMon.println(F("Raw UART @ 115200 (8s, AT every 500ms). Check: STAT LED ON? CTS=GPIO4->INT?"));
-  for (unsigned long t = millis(); millis() - t < 8000;) {
-    SerialAT.print(F("AT\r\n"));
-    for (int k = 0; k < 50; k++) {
-      while (SerialAT.available()) { SerialMon.write(SerialAT.read()); }
-      delay(10);
-    }
-    delay(450);
-  }
-  SerialMon.println(F("\n--- end raw test ---"));
-#endif
-
-  SerialMon.println(F("Trying modem (autobaud)..."));
-  TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
-  delay(1000);
 
   SerialMon.println(F("Initializing modem..."));
   if (!modem.restart()) {
     SerialMon.println(F("restart failed, try init()"));
     modem.init();
   }
-  delay(2000);
+  delay(3000);  // let SIM settle before CPIN
 
   String modemInfo = modem.getModemInfo();
   SerialMon.print(F("Modem: "));
   SerialMon.println(modemInfo);
 
-  if (GSM_PIN[0] && modem.getSimStatus() != 3) {
+  // SIM unlock: try whenever PIN is set (SIM7070 may report status late)
+  if (GSM_PIN[0]) {
     SerialMon.println(F("Unlocking SIM..."));
     for (int i = 0; i < 3; i++) {
       if (modem.simUnlock(GSM_PIN)) {
@@ -164,6 +144,7 @@ void setup() {
       SerialMon.println(F("SIM unlock failed, retry..."));
       delay(2000);
     }
+    delay(1000);
   }
 }
 
