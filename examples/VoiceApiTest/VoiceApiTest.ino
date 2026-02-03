@@ -133,27 +133,63 @@ void setup() {
   SerialMon.print(F("Modem: "));
   SerialMon.println(modemInfo);
 
-  // SIM unlock: try whenever PIN is set (SIM7070 may report status late)
-  if (GSM_PIN[0]) {
-    SerialMon.println(F("Unlocking SIM..."));
+  // Check SIM status and unlock if needed
+  SerialMon.print(F("Checking SIM status..."));
+  int simStatus = modem.getSimStatus();
+  SerialMon.print(F(" status="));
+  SerialMon.println(simStatus);  // 0=ERROR, 1=READY, 2=LOCKED, 3=READY (enum)
+  
+  if (simStatus == 3) {
+    SerialMon.println(F("SIM is ready (no PIN needed)"));
+  } else if (simStatus == 2 && GSM_PIN[0]) {
+    SerialMon.println(F("SIM locked, unlocking..."));
     for (int i = 0; i < 3; i++) {
       if (modem.simUnlock(GSM_PIN)) {
-        SerialMon.println(F("SIM unlocked"));
+        SerialMon.println(F("SIM unlocked OK"));
         break;
       }
-      SerialMon.println(F("SIM unlock failed, retry..."));
+      SerialMon.print(F("Unlock failed, retry "));
+      SerialMon.println(i + 1);
       delay(2000);
     }
-    delay(1000);
+  } else if (GSM_PIN[0]) {
+    // Try unlock anyway (status might be wrong)
+    SerialMon.println(F("Trying unlock (status unclear)..."));
+    if (modem.simUnlock(GSM_PIN)) {
+      SerialMon.println(F("SIM unlocked OK"));
+    } else {
+      SerialMon.println(F("Unlock failed - try disabling PIN on SIM (phone) and use GSM_PIN \"\""));
+    }
   }
+  
+  // Final status check
+  delay(1000);
+  simStatus = modem.getSimStatus();
+  SerialMon.print(F("Final SIM status: "));
+  SerialMon.println(simStatus);
+  if (simStatus != 3 && simStatus != 1) {
+    SerialMon.println(F("WARNING: SIM not ready - network registration may fail"));
+    SerialMon.println(F("Fix: Disable PIN on SIM (phone) and set GSM_PIN \"\" in sketch"));
+  }
+  
+  // Get IMEI and network info
+  String imei = modem.getIMEI();
+  SerialMon.print(F("IMEI: "));
+  SerialMon.println(imei);
 }
 
 void loop() {
   SerialMon.println();
+  
+  // Check signal quality
+  int16_t signal = modem.getSignalQuality();
+  SerialMon.print(F("Signal quality: "));
+  SerialMon.println(signal);
+  
   // "Unhandled: 5)" etc. = modem URC (e.g. +CREG: 0,5 = registered); safe to ignore.
-  SerialMon.println(F("Waiting for network..."));
-  if (!modem.waitForNetwork(120000L)) {
-    SerialMon.println(F("Network timeout"));
+  SerialMon.println(F("Waiting for network (Cat-M can take 3+ min)..."));
+  if (!modem.waitForNetwork(180000L)) {  // 3 minutes for Cat-M
+    SerialMon.println(F("Network timeout - check antenna, signal, APN"));
     delay(10000);
     return;
   }
